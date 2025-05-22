@@ -7,100 +7,81 @@
 
 import SwiftUI
 
+struct MessageItem: Identifiable, Hashable {
+    let id = UUID()
+    let text: String
+    let isUser: Bool
+}
+
 struct ContentView: View {
-    
     @State private var showChat = false
-    @State private var message = ""
-    @State private var messages: [String] = ["Hi there! How can I help you?"]
-    
+    @State private var newMessageText = ""
+    @State private var messages: [MessageItem] = [
+        MessageItem(text: "Hi there! How can I help you today?", isUser: false)
+    ]
+
     var body: some View {
         ZStack {
-            //Background
-            Color(.systemBackground)
-                .ignoresSafeArea()
-            
-            //Chat Box
+            Color(.systemBackground).ignoresSafeArea()
+
             if showChat {
-                
-                VStack {
-                    
-                    Spacer()
-                    
-                    VStack(spacing: 0) {
-                        
-                        HStack {
-                            
-                            Text("Chat Support")
-                                .font(.caption)
-                            
-                            Spacer()
-                            
-                            Button {
-                                withAnimation {
-                                    showChat = false
-                                }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.red.opacity(0.6))
+                VStack(spacing: 0) {
+                    // Chat Header
+                    HStack {
+                        Text("Chat Support")
+                            .font(.caption)
+                            .padding(.leading)
+
+                        Spacer()
+
+                        Button {
+                            withAnimation {
+                                showChat = false
+                                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
                             }
-                            
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(.red.opacity(0.6))
                         }
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        
-                        Divider()
-                        
+                        .padding(.trailing)
+                    }
+                    .padding(.vertical, 12)
+                    .background(.thinMaterial)
+
+                    Divider()
+
+                    // Messages
+                    ScrollViewReader { proxy in
                         ScrollView {
-                            
-                            VStack(alignment: .leading, spacing: 10) {
-                                
-                                ForEach(messages, id: \.self) { msg in
-                                    Text(msg)
-                                        .padding()
-                                        .background(Color.primary.opacity(0.1))
-                                        .cornerRadius(50)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
+                            LazyVStack(spacing: 10) {
+                                ForEach(messages) { msg in
+                                    MessageBubbleView(messageItem: msg)
                                 }
                             }
-                            
                             .padding()
                         }
-                        
-                        .frame(height: 400)
-                        .cornerRadius(50)
-                        
-                        HStack {
-                            
-                            TextField("type a message...", text: $message)
-                                .padding(.horizontal)
-                                .padding(.vertical, 10)
-                                .background(Color(.secondarySystemBackground))
-                                .cornerRadius(25)
-                                    
-                            Button {
-                                if !message.isEmpty {
-                                    messages.append(message)
-                                    message = ""
+                        .onChange(of: messages.count) { oldCount, newCount in
+                            if newCount > oldCount, let lastID = messages.last?.id {
+                                withAnimation(.easeInOut) {
+                                    proxy.scrollTo(lastID, anchor: .bottom)
                                 }
-                            } label: {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(.system(size: 35))
-                                    .foregroundColor(.primary.opacity(0.6))
                             }
                         }
-                        .padding()
                     }
-                    .background(Color(UIColor.systemBackground))
-                    .cornerRadius(35)
-                    .shadow(color: Color.primary.opacity(0.2), radius: 3)
-                    .padding()
-                    .transition(.move(edge: .bottom))
+
+                    // Input
+                    chatInputView
                 }
+                .background(Color(.systemBackground))
+                .cornerRadius(25)
+                .padding()
+                .transition(.move(edge: .bottom))
                 .animation(.easeInOut, value: showChat)
-                .ignoresSafeArea()
             }
-            
+
+            // Floating Chat Button
             if !showChat {
                 VStack {
                     Spacer()
@@ -112,17 +93,74 @@ struct ContentView: View {
                             }
                         } label: {
                             Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(Color(UIColor.systemBackground))
+                                .font(.system(size: 22))
+                                .foregroundColor(Color(.systemBackground))
                                 .padding()
-                                .background(Color.primary.opacity(0.6))
+                                .background(Color.primary)
                                 .clipShape(Circle())
+                                .shadow(radius: 3)
                         }
                         .padding()
                     }
                 }
             }
         }
+    }
+
+    var chatInputView: some View {
+        HStack(spacing: 10) {
+            TextField("Type a message...", text: $newMessageText, axis: .vertical)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(Capsule())
+                .lineLimit(1...4)
+
+            Button {
+                sendMessage()
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 34))
+                    .foregroundColor(newMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : .primary)
+            }
+            .disabled(newMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(.horizontal)
+        .padding(.top, 10)
+        .padding(.bottom, 14)
+    }
+
+    func sendMessage() {
+        let trimmed = newMessageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        messages.append(MessageItem(text: trimmed, isUser: true))
+        newMessageText = ""
+    }
+}
+
+struct MessageBubbleView: View {
+    let messageItem: MessageItem
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        HStack {
+            if messageItem.isUser { Spacer() }
+
+            Text(messageItem.text)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    messageItem.isUser
+                    ? Color.primary.opacity(0.1)
+                    : Color.secondary.opacity(0.1)
+                )
+                .foregroundColor(.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .frame(maxWidth: UIScreen.main.bounds.width * 0.75, alignment: messageItem.isUser ? .trailing : .leading)
+
+            if !messageItem.isUser { Spacer() }
+        }
+        .id(messageItem.id)
     }
 }
 
